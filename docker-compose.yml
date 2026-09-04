@@ -1,0 +1,68 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: patrimonio_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - patrimonio_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: patrimonio_api
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-patrimonio_db}
+      DB_USER: ${DB_USER:-arqueologo_user}
+      DB_PASSWORD: ${DB_PASSWORD:-secret_db_password}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./api/app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - patrimonio_net
+
+  web:
+    image: php:8.2-apache
+    container_name: patrimonio_web
+    restart: unless-stopped
+    environment:
+      API_URL: ${API_URL:-http://api:8000}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      - ./web/src:/var/www/html
+    depends_on:
+      - api
+    networks:
+      - patrimonio_net
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  patrimonio_net:
+    driver: bridge
